@@ -5,7 +5,6 @@ import org.jyafoo.mydb.backend.utils.Panic;
 import org.jyafoo.mydb.backend.utils.Parser;
 import org.jyafoo.mydb.common.Error;
 
-import javax.xml.crypto.OctetStreamData;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
