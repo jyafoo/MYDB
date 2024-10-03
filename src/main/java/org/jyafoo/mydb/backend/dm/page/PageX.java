@@ -29,7 +29,7 @@ public class PageX {
     private static final short OF_DATA = 2;
 
     /**
-     * 最大空闲空间大小，为页面大小减去数据偏移量
+     * 最大空闲空间大小，为页面大小减去数据偏移量，即能存普通页的剩余空间
      */
     public static final int MAX_FREE_SPACE = PageCache.PAGE_SIZE - OF_DATA;
 
@@ -117,8 +117,7 @@ public class PageX {
         System.arraycopy(raw, 0, page.getData(), offset, raw.length);
 
         short rawFSO = getFSO(page);
-        // TODO (jyafoo,2024/9/30,16:51) 问1：不理解为什么大于插入数据后的末尾偏移量就不用更新，不会造成空间浪费吗？
-        //  答：插入数据只会比原来大或跟原来相等，不会比原来小。
+        // TODO (jyafoo,2024/9/30,16:51) Q1：不理解为什么大于插入数据后的末尾偏移量就不用更新，不会造成空间浪费吗？A：插入数据只会比原来大或跟原来相等，不会比原来小。
         // 判断插入数据后是否需要更新FSO
         if (rawFSO < offset + raw.length) {
             // 如果当前FSO值小于插入数据后的末尾偏移量，则更新FSO值为新的末尾偏移量

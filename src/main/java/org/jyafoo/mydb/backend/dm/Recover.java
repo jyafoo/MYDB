@@ -1,12 +1,13 @@
 package org.jyafoo.mydb.backend.dm;
 
-import org.checkerframework.checker.units.qual.A;
+import com.google.common.primitives.Bytes;
+import org.jyafoo.mydb.backend.common.SubArray;
+import org.jyafoo.mydb.backend.dm.dataItem.DataItem;
 import org.jyafoo.mydb.backend.dm.logger.Logger;
 import org.jyafoo.mydb.backend.dm.page.Page;
 import org.jyafoo.mydb.backend.dm.page.PageX;
 import org.jyafoo.mydb.backend.dm.pageCache.PageCache;
 import org.jyafoo.mydb.backend.tm.TransactionManager;
-import org.jyafoo.mydb.backend.tm.TransactionManagerImpl;
 import org.jyafoo.mydb.backend.utils.Panic;
 import org.jyafoo.mydb.backend.utils.Parser;
 import org.jyafoo.mydb.common.Error;
@@ -71,7 +72,6 @@ public class Recover {
     /**
      * 插入的日志格式
      * insertLog：[LogType] [XID] [Pgno] [Offset] [Raw]
-     * 1字节
      */
     static class InsertLogInfo {
         long xid;       // 事务ID
@@ -134,6 +134,63 @@ public class Recover {
     }
 
     /**
+     * 回滚事务
+     * <p>
+     * 通过分析日志并执行逆操作来撤销未提交的事务，以确保事务的原子性和数据库的一致性
+     *
+     * @param tm        事务管理器
+     * @param logger    日志管理器
+     * @param pageCache 页面缓存
+     */
+    private static void undoTransactions(TransactionManager tm, Logger logger, PageCache pageCache) {
+        HashMap<Long, List<byte[]>> logCache = new HashMap<>(); // 缓存日志，键为事务ID，值为该事务的所有日志
+        logger.rewind();
+
+        while (true) {
+            byte[] log = logger.next();
+            if (log == null) {
+                break;
+            }
+
+            if (isInsertLog(log)) {
+                InsertLogInfo insertLogInfo = parseInsertLog(log);
+
+                long xid = insertLogInfo.xid;
+                if (tm.isActive(xid)) {
+                    if (!logCache.containsKey(xid)) {
+                        logCache.put(xid, new ArrayList<>());
+                    }
+                    logCache.get(xid).add(log);
+                }
+            } else {
+                UpdateLogInfo updateLogInfo = parseUpdateLog(log);
+                long xid = updateLogInfo.xid;
+                if (tm.isActive(xid)) {
+                    if (!logCache.containsKey(xid)) {
+                        logCache.put(xid, new ArrayList<>());
+                    }
+                    logCache.get(xid).add(log);
+                }
+            }
+        }
+
+        // 对所有activelog进行倒序undo
+        for (Map.Entry<Long, List<byte[]>> entry : logCache.entrySet()) {
+            List<byte[]> logs = entry.getValue(); // 可能一个事务涉及到多条日志
+            for (int i = logs.size() - 1; i >= 0; i--) {
+                byte[] log = logs.get(i);
+                if (isInsertLog(log)) {
+                    doInsertLog(pageCache, log, UNDO);
+                } else {
+                    doUpdateLog(pageCache, log, UNDO);
+                }
+            }
+            // 撤销事务
+            tm.abort(entry.getKey());
+        }
+    }
+
+    /**
      * 判断是否为插入操作日志
      *
      * @param log 日志字节数组
@@ -141,6 +198,16 @@ public class Recover {
      */
     private static boolean isInsertLog(byte[] log) {
         return log[0] == LOG_TYPE_INSERT;
+    }
+
+    /**
+     * 判断是否为更新操作日志
+     *
+     * @param log 日志字节数组
+     * @return 如果日志类型为更新，则返回true；否则返回false
+     */
+    private static boolean isUpdateLog(byte[] log) {
+        return log[0] == LOG_TYPE_UPDATE;
     }
 
     /**
@@ -178,7 +245,7 @@ public class Recover {
         try {
             if (flag == UNDO) {
                 // TODO (jyafoo,2024/10/1,20:20) 写完dataitem回来释放
-                // DataItem.setDataItemRawInvalid(insertLogInfo.raw);
+                 DataItem.setDataItemRawInvalid(insertLogInfo.raw);
             }
             PageX.recoverInsert(page, insertLogInfo.raw, insertLogInfo.offset);
         } finally {
@@ -217,6 +284,7 @@ public class Recover {
 
     /**
      * 执行更新日志操作
+     *
      * @param pageCache 页面缓存对象，用于获取页面
      * @param log       要操作的日志
      * @param flag      操作标志，表示是重做更新还是回滚更新操作
@@ -227,11 +295,11 @@ public class Recover {
         int pgno = updateLogInfo.pgno;
         short offset = updateLogInfo.offset;
         byte[] raw = null;
-        if(flag == REDO){
+        if (flag == REDO) {
             raw = updateLogInfo.newRaw;     // 重做日志用后相
-        }else if(flag == UNDO){
+        } else if (flag == UNDO) {
             raw = updateLogInfo.oldRaw;    // 回滚日志用前相
-        }else{
+        } else {
             Panic.panic(Error.InvalidTypeException);
         }
 
@@ -244,7 +312,7 @@ public class Recover {
         }
 
         try {
-            PageX.recoverUpdate(page,raw,offset);
+            PageX.recoverUpdate(page, raw, offset);
         } finally {
             page.release();
         }
@@ -252,63 +320,84 @@ public class Recover {
 
 
     /**
-     * 回滚事务
-     * <p>
-     * 通过分析日志并执行逆操作来撤销未提交的事务，以确保事务的原子性和数据库的一致性
+     * 构造更新日志条目
      *
-     * @param tm        事务管理器
-     * @param logger    日志管理器
-     * @param pageCache 页面缓存
+     * @param xid      事务ID
+     * @param dataItem 数据项对象，包含需要更新的数据项以及其相关元信息
+     * @return 构造好的日志字节数组
      */
-    private static void undoTransactions(TransactionManager tm, Logger logger, PageCache pageCache) {
-        HashMap<Long, List<byte[]>> logCache = new HashMap<>(); // 缓存日志，键为事务ID，值为该事务的所有日志
-        logger.rewind();
-
-        while(true){
-            byte[] log = logger.next();
-            if(log == null){
-                break;
-            }
-
-            if(isInsertLog(log)){
-                InsertLogInfo insertLogInfo = parseInsertLog(log);
-
-                long xid = insertLogInfo.xid;
-                if(tm.isActive(xid)){
-                    if(!logCache.containsKey(xid)){
-                        logCache.put(xid,new ArrayList<>());
-                    }
-                    logCache.get(xid).add(log);
-                }
-            }else {
-                UpdateLogInfo updateLogInfo = parseUpdateLog(log);
-                long xid = updateLogInfo.xid;
-                if(tm.isActive(xid)){
-                    if(!logCache.containsKey(xid)){
-                        logCache.put(xid,new ArrayList<>());
-                    }
-                    logCache.get(xid).add(log);
-                }
-            }
-        }
-
-        // 对所有activelog进行倒序undo
-        for (Map.Entry<Long, List<byte[]>> entry : logCache.entrySet()) {
-            List<byte[]> logs = entry.getValue(); // 可能一个事务涉及到多条日志
-            for (int i = logs.size() - 1; i >= 0; i--) {
-                byte[] log = logs.get(i);
-                if(isInsertLog(log)){
-                    doInsertLog(pageCache,log,UNDO);
-                }else{
-                    doUpdateLog(pageCache,log,UNDO);
-                }
-            }
-            // 撤销事务
-            tm.abort(entry.getKey());
-        }
-
+    public static byte[] updateLog(long xid, DataItem dataItem) {
+        byte[] logType = {LOG_TYPE_UPDATE};
+        byte[] xidRaw = Parser.long2Byte(xid);
+        byte[] uidRaw = Parser.long2Byte(dataItem.getUid());
+        byte[] oldRaw = dataItem.getOldRaw();
+        SubArray raw = dataItem.getRaw();
+        byte[] newRaw = Arrays.copyOfRange(raw.raw, raw.start, raw.end);
+        return Bytes.concat(logType, xidRaw, uidRaw, oldRaw, newRaw);
     }
 
 
+    /**
+     * 构造插入日志条目
+     *
+     * @param xid  事务ID
+     * @param page 页对象
+     * @param raw  原始数据
+     * @return 构造好的日志字节数组
+     */
+    public static byte[] insertLog(long xid, Page page, byte[] raw) {
+        byte[] logTypeRaw = {LOG_TYPE_INSERT};
+        byte[] xidRaw = Parser.long2Byte(xid);
+        byte[] pgnoRaw = Parser.int2Byte(page.getPageNumber());
+        byte[] offsetRaw = Parser.short2Byte(PageX.getFSO(page));
+        return Bytes.concat(logTypeRaw, xidRaw, pgnoRaw, offsetRaw, raw);
+    }
+
+    /**
+     * 系统恢复，通过redo和undo来恢复数据库的一致性
+     *
+     * @param tm        事务管理器
+     * @param logger    日志管理器
+     * @param pageCache 页缓存管理
+     */
+    public static void recover(TransactionManager tm, Logger logger, PageCache pageCache) {
+        System.out.println("Recovering...");
+
+        logger.rewind();
+
+        // 寻找最大页号
+        // TODO (jyafoo,2024/10/2,10:18) Q8：为什么要找最大页号？
+        int maxPgno = 0;
+        while (true) {
+            byte[] log = logger.next();
+            if (log == null) {
+                break;
+            }
+
+            int pgno;
+            if (isInsertLog(log)) {
+                InsertLogInfo insertLogInfo = parseInsertLog(log);
+                pgno = insertLogInfo.pgno;
+            } else {
+                UpdateLogInfo updateLogInfo = parseUpdateLog(log);
+                pgno = updateLogInfo.pgno;
+            }
+
+            maxPgno = Math.max(maxPgno, pgno);
+        }
+
+        maxPgno = maxPgno == 0 ? 1 : maxPgno;
+
+        pageCache.truncateByPgno(maxPgno);
+        System.out.println("Truncate to " + maxPgno + " pages.");
+
+        redoTransactions(tm, logger, pageCache);
+        System.out.println("Redo Transactions Over.");
+
+        undoTransactions(tm, logger, pageCache);
+        System.out.println("Undo Transactions Over.");
+
+        System.out.println("Recovery Over.");
+    }
 }
 
