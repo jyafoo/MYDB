@@ -106,7 +106,7 @@ public class PageCacheImpl extends AbstractCache<Page> implements PageCache {
     }
 
     @Override
-    public int getPageNumber() {
+    public int getPageNumbers() {
         return pageNumbers.intValue();
     }
 
@@ -153,7 +153,7 @@ public class PageCacheImpl extends AbstractCache<Page> implements PageCache {
      * 驱逐页面，需要根据页面是否是脏页面，来决定是否需要写回文件系统
      */
     @Override
-    protected void releasForCache(Page page) {
+    protected void releaseForCache(Page page) {
         if (page.isDirty()) {
             flush(page);
             page.setDirty(false);

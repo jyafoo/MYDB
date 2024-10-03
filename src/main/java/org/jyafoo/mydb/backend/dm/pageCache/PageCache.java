@@ -1,6 +1,14 @@
 package org.jyafoo.mydb.backend.dm.pageCache;
 
 import org.jyafoo.mydb.backend.dm.page.Page;
+import org.jyafoo.mydb.backend.utils.Panic;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileChannel;
+
+import org.jyafoo.mydb.common.Error;
 
 /**
  * 页面缓存（内存）操作接口
@@ -40,7 +48,7 @@ public interface PageCache {
     /**
      * 释放指定页面的资源
      *
-     * @param page
+     * @param page 数据页
      */
     void release(Page page);
 
@@ -53,11 +61,11 @@ public interface PageCache {
     void truncateByPgno(int maxPgno);
 
     /**
-     * 获取页号
+     * 获取缓存页数量
      *
-     * @return 页号
+     * @return 缓存页数量
      */
-    int getPageNumber();
+    int getPageNumbers();
 
     /**
      * 将页面刷新到数据库文件（磁盘中）
@@ -66,4 +74,59 @@ public interface PageCache {
      */
     void flushPage(Page page);
 
+    /**
+     * 创建页面缓存操作对象
+     *
+     * @param path   存储数据库文件的路径
+     * @param memory 页面缓存大小
+     * @return 页面缓存操作对象
+     */
+    static PageCacheImpl create(String path, long memory) {
+        File file = new File(path + PageCacheImpl.DB_SUFFIX);
+        try {
+            if (!file.createNewFile()) {
+                Panic.panic(Error.FileExistsException);
+            }
+        } catch (Exception e) {
+            Panic.panic(e);
+        }
+        if (!file.canRead() || !file.canWrite()) {
+            Panic.panic(Error.FileCannotRWException);
+        }
+
+        FileChannel fileChannel = null;
+        RandomAccessFile randomAccessFile = null;
+        try {
+            randomAccessFile = new RandomAccessFile(file, "rw");
+            fileChannel = randomAccessFile.getChannel();
+        } catch (FileNotFoundException e) {
+            Panic.panic(e);
+        }
+        return new PageCacheImpl(randomAccessFile, fileChannel, (int) memory / PAGE_SIZE);
+    }
+
+    /**
+     * @param path   存储数据库文件的路径
+     * @param memory 页面缓存大小
+     * @return 页面缓存操作对象
+     */
+    static PageCacheImpl open(String path, long memory) {
+        File file = new File(path + PageCacheImpl.DB_SUFFIX);
+        if (!file.exists()) {
+            Panic.panic(Error.FileNotExistsException);
+        }
+        if (!file.canRead() || !file.canWrite()) {
+            Panic.panic(Error.FileCannotRWException);
+        }
+
+        FileChannel fileChannel = null;
+        RandomAccessFile randomAccessFile = null;
+        try {
+            randomAccessFile = new RandomAccessFile(file, "rw");
+            fileChannel = randomAccessFile.getChannel();
+        } catch (FileNotFoundException e) {
+            Panic.panic(e);
+        }
+        return new PageCacheImpl(randomAccessFile, fileChannel, (int) memory / PAGE_SIZE);
+    }
 }
