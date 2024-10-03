@@ -54,7 +54,7 @@ public interface TransactionManager {
      * @param xid 事务id
      * @return 如果事务已经提交，返回true；否则返回false
      */
-    boolean isCommited(long xid);
+    boolean isCommitted(long xid);
 
     /**
      * 查询一个事务的状态是否是已取消
@@ -62,7 +62,7 @@ public interface TransactionManager {
      * @param xid 事务id
      * @return 如果事务已经被取消，返回true；否则返回false
      */
-    boolean isAbort(long xid);
+    boolean isAborted(long xid);
 
     /**
      * 关闭TM (Transaction Manager)
@@ -102,11 +102,11 @@ public interface TransactionManager {
         // 4、读取文件头，获取xidCounter
         ByteBuffer buf = ByteBuffer.wrap(new byte[TransactionManagerImpl.LEN_XID_HEADER_LENGTH]);
         try {
-            // TODO (jyafoo,2024/9/28,21:51) 不是很懂为什么这里获取一次文件头，在checkXIDCounter还要获取一次
+            // TODO (jyafoo,2024/9/28,21:51) Q5：不是很懂为什么这里获取一次文件头，在checkXIDCounter还要获取一次？因为第一次创建文件的时候要对空的xid文件写写入一个初始值
             fileChannel.position(0);
-            fileChannel.read(buf);
+            fileChannel.write(buf);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            Panic.panic(e);
         }
 
         // 5、创建事务管理器实现类

@@ -46,7 +46,7 @@ public class TransactionManagerImpl implements TransactionManager {
     /**
      * 超级事务，永远为commited状态
      */
-    public static final long SUPER_XID = 0; // TODO (JIA,2024/9/28,21:13) 不太懂为什么为0而不是1，不跟执行冲突吗
+    public static final long SUPER_XID = 0; // TODO (JIA,2024/9/28,21:13) Q6：不太懂为什么为0而不是1，不跟执行冲突吗
 
     /**
      * XID 文件后缀
@@ -222,26 +222,26 @@ public class TransactionManagerImpl implements TransactionManager {
 
     @Override
     public boolean isActive(long xid) {
-        if(xid == SUPER_XID) {
+        if (xid == SUPER_XID) {
             return false;
         }
-        return checkXID(xid,FIELD_TRAN_ACTIVE);
+        return checkXID(xid, FIELD_TRAN_ACTIVE);
     }
 
     @Override
-    public boolean isCommited(long xid) {
-        if(xid == SUPER_XID) {
+    public boolean isCommitted(long xid) {
+        if (xid == SUPER_XID) {
             return false;
         }
-        return checkXID(xid,FIELD_TRAN_COMMITTED);
+        return checkXID(xid, FIELD_TRAN_COMMITTED);
     }
 
     @Override
-    public boolean isAbort(long xid) {
-        if(xid == SUPER_XID) {
+    public boolean isAborted(long xid) {
+        if (xid == SUPER_XID) {
             return false;
         }
-        return checkXID(xid,FIELD_TRAN_ABORTED);
+        return checkXID(xid, FIELD_TRAN_ABORTED);
     }
 
     @Override
