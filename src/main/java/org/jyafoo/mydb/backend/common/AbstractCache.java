@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.Set;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.logging.Handler;
 
 /**
  * AbstractCache 实现了一个引用计数策略的缓存
@@ -20,19 +19,17 @@ public abstract class AbstractCache<T> {
      * 实际缓存数据
      */
     private HashMap<Long, T> cache;
-
     /**
      * 元素的引用个数
      */
     private HashMap<Long, Integer> references;
-
     /**
      * 正在获取某资源的线程
      */
     private HashMap<Long, Boolean> getting;
 
     /**
-     * 缓存的最大缓存资源数量
+     * 缓存的最大缓存资源数量，用于控制缓存的大小
      */
     private int maxResource;
 
@@ -64,7 +61,7 @@ public abstract class AbstractCache<T> {
      * @throws Exception 如果在获取资源过程中发生错误
      */
     protected T get(long key) throws Exception {
-        // TODO (jyafoo,2024/9/30,10:18) 获取资源不是很理解
+        // TODO (jyafoo,2024/9/30,10:18) Q：获取资源不是很理解？A：这是缓存的抽象类，下游模块可通过cache对磁盘进行读写
         // 循环上锁是为了拿到获取资源的权利
         while (true) {
             // 上锁，防止多线程并发访问资源缓存时出现竞争条件
@@ -141,7 +138,7 @@ public abstract class AbstractCache<T> {
             int ref = references.get(key) - 1;
             if (ref == 0) {
                 T obj = cache.get(key);
-                releasForCache(obj);
+                releaseForCache(obj);
                 references.remove(key);
                 cache.remove(key);
                 count--;
@@ -163,7 +160,7 @@ public abstract class AbstractCache<T> {
             Set<Long> keys = cache.keySet();
             for (long key : keys) {
                 T obj = cache.get(key);
-                releasForCache(obj);
+                releaseForCache(obj);
                 references.remove(key);
                 cache.remove(key);
             }
@@ -176,7 +173,7 @@ public abstract class AbstractCache<T> {
     /**
      * 当资源不在缓存时的获取行为
      *
-     * @param key
+     * @param key 资源id
      * @return
      * @throws Exception
      */
@@ -184,8 +181,9 @@ public abstract class AbstractCache<T> {
 
     /**
      * 当资源被驱逐时的写回行为
+     *
      * @param obj 资源对象
      */
-    protected abstract void releasForCache(T obj);
+    protected abstract void releaseForCache(T obj);
 
 }
