@@ -123,14 +123,7 @@ public class DataManagerImpl extends AbstractCache<DataItem> implements DataMana
         return dataItemImpl;
     }
 
-    /**
-     * 插入数据到数据库中
-     *
-     * @param xid 事务ID
-     * @param data 要插入的数据
-     * @return 返回插入数据的唯一标识
-     * @throws Exception 如果数据太大或数据库太忙而无法插入，则抛出异常
-     */
+
     @Override
     public long insert(long xid, byte[] data) throws Exception {
         byte[] raw = DataItem.wrapDataItemRaw(data);
