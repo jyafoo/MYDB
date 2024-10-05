@@ -94,7 +94,7 @@ public class DataItemImpl implements DataItem {
 
     @Override
     public void unBefore() {
-        System.arraycopy(oldRaw, 0, raw, raw.start, oldRaw.length);
+        System.arraycopy(oldRaw, 0, raw.raw, raw.start, oldRaw.length);
         wLock.unlock();
     }
 
