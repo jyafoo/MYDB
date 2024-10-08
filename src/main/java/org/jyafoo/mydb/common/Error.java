@@ -15,6 +15,7 @@ public class Error {
     public static final Exception MemTooSmallException = new RuntimeException("Memory too small!");
     public static final Exception DataTooLargeException = new RuntimeException("Data too large!");
     public static final Exception DatabaseBusyException = new RuntimeException("Database is busy!");
+    public static final Exception InvalidTypeException = new RuntimeException("Operation Error!");
 
     // tm
     public static final Exception BadXIDFileException = new RuntimeException("Bad XID file!");

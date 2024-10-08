@@ -34,7 +34,7 @@ public class BPlusTree {
      */
     DataItem bootDataItem;
     /**
-     *
+     * 锁
      */
     Lock bootLock;
 
